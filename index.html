@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Уведомления">
+    <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="> <title>Таймер Уведомлений</title>
+
+    <style>
+        :root {
+            --bg-color: #f2f2f7;
+            --card-bg: #ffffff;
+            --text-color: #000000;
+            --primary-color: #007AFF;
+            --danger-color: #FF3B30;
+            --input-bg: #e3e3e8;
+        }
+
+        /* Темная тема iOS */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #000000;
+                --card-bg: #1c1c1e;
+                --text-color: #ffffff;
+                --input-bg: #2c2c2e;
+            }
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            /* Учет "челки" и закруглений iPhone */
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+            padding-bottom: env(safe-area-inset-bottom); 
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 400px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            transition: transform 0.2s ease;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        p.desc {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 24px;
+            line-height: 1.4;
+        }
+
+        /* Поля ввода в стиле iOS */
+        input, textarea, select {
+            width: 100%;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border-radius: 10px;
+            border: none;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-size: 17px;
+            box-sizing: border-box;
+            outline: none;
+            font-family: inherit;
+        }
+        
+        textarea {
+            resize: none;
+            height: 80px;
+        }
+
+        /* Кнопки в стиле iOS */
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 10px;
+        }
+
+        button:active {
+            opacity: 0.7;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Статус бар/Таймер */
+        #status-area {
+            margin-top: 20px;
+            font-size: 14px;
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <div id="permission-view" class="card">
+            <h2>Разрешить уведомления</h2>
+            <p class="desc">Для работы таймера приложению необходим доступ к отправке уведомлений.</p>
+            <button id="btn-request" class="btn-primary">Разрешить</button>
+            <button id="btn-retry" class="btn-primary hidden">Повторно запросить</button>
+            <p id="perm-error" class="desc" style="color: var(--danger-color); margin-top:10px; display:none;">Доступ запрещен. Зайдите в Настройки iOS → Веб-приложение и включите уведомления вручную.</p>
+        </div>
+
+        <div id="app-view" class="card hidden">
+            <h2>Создать уведомление</h2>
+            
+            <input type="text" id="notif-title" placeholder="Заголовок (например, Пора пить воду)">
+            <textarea id="notif-body" placeholder="Текст уведомления..."></textarea>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="number" id="time-val" placeholder="Время" style="flex: 2;">
+                <select id="time-unit" style="flex: 1;">
+                    <option value="1">Сек</option>
+                    <option value="60">Мин</option>
+                </select>
+            </div>
+
+            <button id="btn-start" class="btn-primary">Запустить таймер</button>
+            
+            <div id="status-area"></div>
+        </div>
+
+    </div>
+
+    <script>
+        // Элементы UI
+        const permView = document.getElementById('permission-view');
+        const appView = document.getElementById('app-view');
+        const btnRequest = document.getElementById('btn-request');
+        const btnRetry = document.getElementById('btn-retry');
+        const permError = document.getElementById('perm-error');
+        
+        const btnStart = document.getElementById('btn-start');
+        const inputTitle = document.getElementById('notif-title');
+        const inputBody = document.getElementById('notif-body');
+        const inputTime = document.getElementById('time-val');
+        const inputUnit = document.getElementById('time-unit');
+        const statusArea = document.getElementById('status-area');
+
+        let timerId = null;
+
+        // 1. Проверка текущего статуса при загрузке
+        document.addEventListener('DOMContentLoaded', () => {
+            checkPermissionState();
+        });
+
+        function checkPermissionState() {
+            if (!("Notification" in window)) {
+                permError.innerText = "Ваше устройство не поддерживает этот тип уведомлений.";
+                permError.style.display = "block";
+                return;
+            }
+
+            if (Notification.permission === "granted") {
+                showApp();
+            } else if (Notification.permission === "denied") {
+                showDenied();
+            } else {
+                // permission === 'default', ждем нажатия
+                btnRequest.classList.remove('hidden');
+                btnRetry.classList.add('hidden');
+            }
+        }
+
+        function showApp() {
+            permView.classList.add('hidden');
+            appView.classList.remove('hidden');
+        }
+
+        function showDenied() {
+            permView.classList.remove('hidden');
+            btnRequest.classList.add('hidden');
+            btnRetry.classList.remove('hidden'); // Показываем кнопку "Повторно"
+            permError.style.display = "block";
+        }
+
+        // 2. Логика запроса прав
+        function requestPermission() {
+            Notification.requestPermission().then((permission) => {
+                if (permission === "granted") {
+                    showApp();
+                } else {
+                    showDenied();
+                }
+            });
+        }
+
+        btnRequest.addEventListener('click', requestPermission);
+        
+        btnRetry.addEventListener('click', () => {
+            // В некоторых браузерах после 'denied' программно вызвать нельзя, 
+            // но на iOS иногда сбрасывается при повторном добавлении на экран.
+            // Попытаемся запросить снова.
+            requestPermission();
+            alert("Если уведомления не включаются, удалите иконку с экрана 'Домой' и добавьте сайт заново, либо проверьте Настройки iOS.");
+        });
+
+        // 3. Логика таймера и уведомления
+        btnStart.addEventListener('click', () => {
+            const title = inputTitle.value.trim() || "Уведомление";
+            const body = inputBody.value.trim() || "Время пришло!";
+            const timeVal = parseInt(inputTime.value);
+            const multiplier = parseInt(inputUnit.value);
+
+            if (!timeVal || timeVal <= 0) {
+                alert("Введите корректное время!");
+                return;
+            }
+
+            // Очищаем предыдущий таймер если был
+            if (timerId) clearTimeout(timerId);
+
+            const totalSeconds = timeVal * multiplier;
+            const ms = totalSeconds * 1000;
+
+            statusArea.innerText = `Таймер запущен на ${totalSeconds} сек...`;
+            btnStart.innerText = "Перезапустить";
+
+            timerId = setTimeout(() => {
+                sendNotification(title, body);
+                statusArea.innerText = "Уведомление отправлено!";
+                btnStart.innerText = "Запустить таймер";
+                timerId = null;
+            }, ms);
+        });
+
+        function sendNotification(title, body) {
+            // Проверка на iOS PWA контекст
+            try {
+                const options = {
+                    body: body,
+                    icon: "", // Можно добавить URL картинки
+                    tag: "custom-notification", // Чтобы не спамить одинаковыми
+                    vibrate: [200, 100, 200]
+                };
+                
+                // Создаем уведомление
+                new Notification(title, options);
+                
+            } catch (e) {
+                alert("Ошибка отправки: " + e);
+            }
+        }
+    </script>
+</body>
+</html>
